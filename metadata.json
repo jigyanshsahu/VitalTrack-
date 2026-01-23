@@ -1,6 +1,6 @@
 {
-  "name": "VitalTrack AI",
-  "description": "An intelligent health companion for seniors featuring medication management, vital tracking with AI insights, and one-tap emergency access.",
+  "name": "VitalTrack",
+  "description": "A health companion for seniors featuring medication management, vital tracking, and one-tap emergency access.",
   "requestFramePermissions": [
     "camera",
     "microphone",

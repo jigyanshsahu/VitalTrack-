@@ -4,7 +4,6 @@ import { LayoutDashboard, Pill, Activity, AlertCircle, FileText, Menu, Plus, Upl
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { AppState, Medication, UserProfile, VitalRecord, VitalType, MedicalReport } from './types';
 import { Card, Button, Badge } from './components/UIComponents';
-import { parsePrescriptionImage, fileToGenerativePart, getVitalInsights, analyzeMedicalDocument } from './services/geminiService';
 
 // --- Global Context ---
 interface AppContextType extends AppState {
@@ -143,32 +142,10 @@ const Dashboard = () => {
 const Medications = () => {
   const { medications, addMedication, removeMedication } = useAppContext();
   const [isAdding, setIsAdding] = useState(false);
-  const [isScanning, setIsScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<Partial<Medication>[] | null>(null);
 
   // Form State
   const [newMedName, setNewMedName] = useState('');
   const [newMedDosage, setNewMedDosage] = useState('');
-
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setIsScanning(true);
-      try {
-        const base64 = await fileToGenerativePart(file);
-        const meds = await parsePrescriptionImage(base64);
-        setScanResult(meds);
-        if (meds.length > 0) {
-          setNewMedName(meds[0].name || '');
-          setNewMedDosage(meds[0].dosage || '');
-        }
-      } catch (err) {
-        alert("Failed to scan prescription.");
-      } finally {
-        setIsScanning(false);
-      }
-    }
-  };
 
   const handleAddMed = () => {
     if (!newMedName) return;
@@ -184,7 +161,6 @@ const Medications = () => {
     setNewMedName('');
     setNewMedDosage('');
     setIsAdding(false);
-    setScanResult(null);
   };
 
   return (
@@ -223,18 +199,10 @@ const Medications = () => {
             </div>
             
             <div className="order-1 md:order-2">
-              <label className="block text-slate-700 font-medium mb-2">Scan Prescription (AI)</label>
-              <label className="flex flex-col items-center justify-center w-full h-full min-h-[140px] border-2 border-dashed border-emerald-300 rounded-xl bg-white cursor-pointer hover:bg-emerald-50 transition">
-                 {isScanning ? (
-                   <span className="text-emerald-600 animate-pulse font-bold">Scanning...</span>
-                 ) : (
-                   <>
-                     <Camera className="w-8 h-8 text-emerald-500 mb-2" />
-                     <span className="text-emerald-700 font-medium text-center px-4">Tap to take photo</span>
-                   </>
-                 )}
-                 <input type="file" accept="image/*" className="hidden" onChange={handleFileUpload} />
-              </label>
+              <label className="block text-slate-700 font-medium mb-2">Add by Photo</label>
+              <div className="flex items-center justify-center w-full h-full min-h-[140px] rounded-xl bg-white border border-slate-200">
+                 <span className="text-slate-500">Photo upload is optional. Add medicines manually using the form.</span>
+              </div>
             </div>
           </div>
           <Button fullWidth onClick={handleAddMed} disabled={!newMedName}>Save Medicine</Button>
@@ -291,10 +259,16 @@ const Vitals = () => {
 
   const handleAnalyze = async () => {
     setLoadingInsight(true);
-    const result = await getVitalInsights(filteredVitals);
-    setInsight(result);
+    // Simple local analysis: average systolic value
+    const values = filteredVitals.map(v => parseFloat((v.value || '').split('/')[0]) || 0).filter(n => n > 0);
+    if (values.length === 0) {
+      setInsight('No vitals available to analyze.');
+    } else {
+      const avg = Math.round(values.reduce((a,b)=>a+b,0)/values.length);
+      setInsight(`Average ${selectedType} in view: ${avg}. Keep monitoring and consult your doctor if needed.`);
+    }
     setLoadingInsight(false);
-  };
+  }; 
 
   const handleLog = () => {
     if(!inputValue) return;
@@ -376,7 +350,7 @@ const Vitals = () => {
           </div>
         </Card>
 
-        {/* AI Insights */}
+        {/* Insights */}
         <Card className="bg-gradient-to-br from-indigo-50 to-blue-50 border-indigo-100">
           <div className="flex items-start gap-4 h-full">
             <div className="p-3 bg-white rounded-full shadow-sm flex-shrink-0">
@@ -384,7 +358,7 @@ const Vitals = () => {
             </div>
             <div className="flex-1 flex flex-col justify-between h-full">
                <div>
-                 <h3 className="text-xl font-bold text-indigo-900 mb-2">AI Health Assistant</h3>
+                 <h3 className="text-xl font-bold text-indigo-900 mb-2">Health Insights</h3>
                  {insight ? (
                    <p className="text-indigo-800 text-lg leading-relaxed">{insight}</p>
                  ) : (
@@ -416,34 +390,28 @@ const Documents = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [newReport, setNewReport] = useState<Partial<MedicalReport> | null>(null);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       setIsAnalyzing(true);
       setIsUploading(true);
       try {
-        const base64 = await fileToGenerativePart(file);
-        const analysis = await analyzeMedicalDocument(base64);
-        
-        if (analysis) {
-           setNewReport({
-             ...analysis,
-             imageUrl: `data:${file.type};base64,${base64}`
-           });
-        } else {
-           // Fallback if AI fails
-           setNewReport({
-             title: file.name,
-             type: 'Other',
-             date: new Date().toISOString().split('T')[0],
-             summary: 'No summary available.',
-             imageUrl: `data:${file.type};base64,${base64}`
-           });
-        }
+        const reader = new FileReader();
+        reader.onload = () => {
+          setNewReport({
+            title: file.name,
+            type: 'Other',
+            date: new Date().toISOString().split('T')[0],
+            summary: '',
+            imageUrl: reader.result as string
+          });
+          setIsUploading(false);
+          setIsAnalyzing(false);
+        };
+        reader.readAsDataURL(file);
       } catch (err) {
-        alert("Failed to analyze document.");
+        alert("Failed to process document.");
         setIsUploading(false);
-      } finally {
         setIsAnalyzing(false);
       }
     }
@@ -482,7 +450,7 @@ const Documents = () => {
                {isAnalyzing ? (
                  <div className="text-center">
                    <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-indigo-600 mx-auto mb-2"></div>
-                   <span className="text-indigo-600 font-bold animate-pulse">AI Categorizing...</span>
+                   <span className="text-indigo-600 font-bold animate-pulse">Processing...</span>
                  </div>
                ) : (
                  <>
@@ -530,7 +498,7 @@ const Documents = () => {
               </div>
 
               <div>
-                 <label className="block text-slate-700 font-medium mb-1">Summary (AI Generated)</label>
+                 <label className="block text-slate-700 font-medium mb-1">Summary</label>
                  <textarea 
                    value={newReport.summary}
                    onChange={(e) => setNewReport({...newReport, summary: e.target.value})}
@@ -692,7 +660,7 @@ const AppContent = () => {
               <div className="bg-emerald-600 p-1.5 rounded-lg shadow-sm">
                 <HeartPulse className="w-6 h-6 text-white" />
               </div>
-              <span className="text-xl font-bold text-slate-900 tracking-tight">VitalTrack AI</span>
+              <span className="text-xl font-bold text-slate-900 tracking-tight">VitalTrack</span>
             </div>
 
             {/* Profile Section (Right) */}

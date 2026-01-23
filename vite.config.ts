@@ -14,6 +14,7 @@ export default defineConfig({
     },
   },
   build: {
+    chunkSizeWarningLimit: 2000, // in KB — increase to avoid false-positive warnings for vendor bundles
     rollupOptions: {
       output: {
         manualChunks(id) {
