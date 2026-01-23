@@ -1,0 +1,9 @@
+{
+  "name": "VitalTrack AI",
+  "description": "An intelligent health companion for seniors featuring medication management, vital tracking with AI insights, and one-tap emergency access.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
